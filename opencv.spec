@@ -1,5 +1,6 @@
 #global indice   a
-%bcond_with    ffmpeg
+%bcond_without ffmpeg
+%global        with_ffmpeg 1
 %bcond_with    gstreamer
 %bcond_with    eigen2
 %bcond_with    eigen3
@@ -8,10 +9,24 @@
 %bcond_with    sse3
 %bcond_with    cuda
 %bcond_with    xine
-%bcond_with    atlas
+%bcond_without openblas
+%global        with_openblas 1
 %bcond_with    vtk
+
 %global srcname opencv
-%global abiver 3.2
+%global abiver 3.3
+%global opencv_python_version 8
+
+%global with_python36 1
+
+%{!?python2_wheelsuffix: %define python2_wheelsuffix %(%{__python} -c 'from wheel.pep425tags import get_abbr_impl, get_impl_ver, get_abi_tag; from distutils.util import get_platform; print("-".join([get_abbr_impl() + get_impl_ver(), get_abi_tag(), get_platform().replace("-", "_").replace(".", "_")]))')}
+%global python2_wheelname %{srcname}_python-%{version}-%{python2_wheelsuffix}.whl
+%global python2_record %{python2_sitearch}/%{srcname}_python-%{version}.dist-info/RECORD
+%if 0%{?with_python36}
+%{!?python36_wheelsuffix: %define python36_wheelsuffix %(%{__python36} -c 'from wheel.pep425tags import get_abbr_impl, get_impl_ver, get_abi_tag; from distutils.util import get_platform; print("-".join([get_abbr_impl() + get_impl_ver(), get_abi_tag(), get_platform().replace("-", "_").replace(".", "_")]))')}
+%global python36_wheelname %{srcname}_python-%{version}-%{python36_wheelsuffix}.whl
+%global python36_record %{python36_sitearch}/%{srcname}_python-%{version}.dist-info/RECORD
+%endif
 
 # Required because opencv-core has lot of spurious dependencies
 # (despite supposed to be "-core")
@@ -20,38 +35,22 @@
 %global optflags %(echo %{optflags} -Wl,--as-needed )
 
 Name:           opencv
-Version:        3.2.0
-Release:        5%{?dist}
+Version:        3.3.0
+Release:        1%{?dist}
 Summary:        Collection of algorithms for computer vision
 Group:          Development/Libraries
 # This is normal three clause BSD.
 License:        BSD
 URL:            http://opencv.org
-# HOW TO PREPARE TARBALLS FOR FEDORA
-#
-# Need to remove copyrighted lena.jpg images from tarball (rhbz#1295173)
-# and SIFT/SURF from tarball, due to legal concerns.
-# Upstream tarball is available on https://github.com/opencv/opencv/archive/${VERSION}/opencv-${VERSION}.tar.gz
-# 
-# export VERSION=3.2.0
-# wget https://github.com/opencv/opencv/archive/${VERSION}/opencv-${VERSION}.tar.gz
-# tar xvf opencv-${VERSION}.tar.gz
-# cd opencv-${VERSION}
-# find ./ -iname "len*.*" -exec rm {} \;
-# rm -rf modules/xfeatures2d/
-# cd ..; tar zcf opencv-clean-${VERSION}.tar.gz opencv-${VERSION}/
-# wget https://github.com/Itseez/opencv_contrib/archive/%%{version}/opencv_contrib-%%{version}.tar.gz
-# tar xvf opencv_contrib-${VERSION}.tar.gz
-# cd opencv_contrib-${VERSION}
-# rm -rf modules/xfeatures2d/
-# cd ..; tar zcf opencv_contrib-clean-${VERSION}.tar.gz opencv_contrib-${VERSION}/
-Source0:        %{name}-clean-%{version}.tar.gz
-Source1:        %{name}_contrib-clean-%{version}.tar.gz
+
+Source0:        https://github.com/opencv/opencv/archive/%{version}.tar.gz#/opencv-%{version}.tar.gz
+Source1:        https://github.com/Itseez/opencv_contrib/archive/%{version}/opencv_contrib-%{version}.tar.gz
+Source2:        https://github.com/skvark/opencv-python/archive/%{opencv_python_version}.tar.gz#/opencv-python-8.tar.gz
 # fix/simplify cmake config install location (upstreamable)
 # https://bugzilla.redhat.com/1031312
 Patch1:         opencv-3.2.0-cmake_paths.patch
 Patch2:         opencv-3.1-pillow.patch
-Patch3:         opencv-3.2.0-test-file-fix.patch
+Patch4:         opencv-3.3.0-fix_protobuf_cmake.patch
 
 BuildRequires:  libtool
 BuildRequires:  cmake >= 2.6.3
@@ -89,9 +88,16 @@ BuildRequires:  tbb-devel
 %endif
 BuildRequires:  zlib-devel pkgconfig
 BuildRequires:  python2-devel
-BuildRequires:  python3-devel
+BuildRequires:  python2-pip
+BuildRequires:  python2-setuptools
+BuildRequires:  python2-wheel
+BuildRequires:  python2-numpy
+BuildRequires:  python36u-devel
+BuildRequires:  python36u-setuptools
+BuildRequires:  python36u-pip
+BuildRequires:  python36u-wheel
+BuildRequires:  python36u-numpy
 BuildRequires:  numpy, swig >= 1.3.24
-BuildRequires:  python3-numpy
 BuildRequires:  python-sphinx
 %{?with_ffmpeg:BuildRequires:  ffmpeg-devel >= 0.4.9}
 %if 0%{?fedora} > 20
@@ -115,7 +121,7 @@ BuildRequires:  qt5-qtbase-devel
 BuildRequires:  mesa-libGL-devel mesa-libGLU-devel
 BuildRequires:  hdf5-devel
 %{?with_vtk:BuildRequires: vtk-devel}
-%{?with_atlas:BuildRequires: atlas-devel}
+%{?with_openblas:BuildRequires: openblas-devel}
 #ceres-solver-devel push eigen3-devel and tbb-devel
 %{?with_tbb:
   %{?with_eigen3:
@@ -170,14 +176,14 @@ Requires:       numpy
 %description    python
 This package contains Python bindings for the OpenCV library.
 
-%package        python3
+%package        python36u
 Summary:        Python3 bindings for apps which use OpenCV
 Group:          Development/Libraries
 Requires:       opencv%{_isa} = %{version}-%{release}
 Requires:       numpy
 %{?python_provide:%python_provide python3-%{srcname}}
 
-%description    python3
+%description    python36u
 This package contains Python3 bindings for the OpenCV library.
 
 
@@ -193,17 +199,21 @@ distribution, since the library maintains binary compatibility, and tries
 to provide decent performance and stability.
 
 %prep
-%setup -q -a1
+%setup -q -a1 -a2
 # we don't use pre-built contribs
+mv 3rdparty/ittnotify ./ittnotify.bak
+rm -rf 3rdparty/*
+mv ittnotify.bak 3rdparty/ittnotify
 pwd
-rm -rf 3rdparty/
 %patch1 -p1 -b .cmake_paths
 pushd %{name}_contrib-%{version}
 # missing dependecies for dnn module in Fedora (protobuf-cpp)
 rm -rf modules/dnn/
 %patch2 -p1 -b .pillow
-%patch3 -p1 -b .fixtest
 popd
+%patch4 -p1 -b .fix_protobuf_cmake
+
+echo 'opencv_version = "%{version}"' > opencv-python-%{opencv_python_version}/cv_version.py
 
 # fix dos end of lines
 #sed -i 's|\r||g'  samples/c/adaptiveskindetector.cpp
@@ -218,21 +228,31 @@ pushd build
 
 # disabling IPP because it is closed source library from intel
 
-%cmake CMAKE_VERBOSE=1 \
+%cmake \
  -DWITH_IPP=OFF \
  -DWITH_QT=ON \
  -DWITH_OPENGL=ON \
  -DWITH_GDAL=ON \
  -DWITH_UNICAP=ON \
- -DPYTHON_PACKAGES_PATH=%{python_sitearch} \
+ -DPYTHON2INTERP_FOUND=ON -DPYTHON2LIBS_FOUND=ON \
+ -DPYTHON3INTERP_FOUND=ON -DPYTHON3LIBS_FOUND=ON \
+ -DPYTHON2_EXECUTABLE=%{__python} \
+ -DPYTHON3_EXECUTABLE=%{__python36} \
+ -DPYTHON2_PACKAGES_PATH=%{python_sitearch} \
+ -DPYTHON3_PACKAGES_PATH=%{python36_sitearch} \
+ -DPYTHON2_VERSION_STRING=$(%{__python} -c "from platform import python_version; print(%{__python}_version())") \
+ -DPYTHON2_INCLUDE_PATH=$(%{__python} -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())") \
+ -DPYTHON2_PACKAGES_PATH=$(%{__python} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())") \
+ -DPYTHON2_NUMPY_INCLUDE_DIRS=$(%{__python} -c "import os; os.environ['DISTUTILS_USE_SDK']='1'; import numpy.distutils; print(os.pathsep.join(numpy.distutils.misc_util.get_numpy_include_dirs()))") \
+ -DPYTHON2_NUMPY_VERSION=$(%{__python} -c "import numpy; print(numpy.version.version)") \
+ -DPYTHON3_VERSION_STRING=$(%{__python36} -c "from platform import python_version; print(%{__python36}_version())") \
+ -DPYTHON3_INCLUDE_PATH=$(%{__python36} -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())") \
+ -DPYTHON3_PACKAGES_PATH=$(%{__python36} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())") \
+ -DPYTHON3_NUMPY_INCLUDE_DIRS=$(%{__python36} -c "import os; os.environ['DISTUTILS_USE_SDK']='1'; import numpy.distutils; print(os.pathsep.join(numpy.distutils.misc_util.get_numpy_include_dirs()))") \
+ -DPYTHON3_NUMPY_VERSION=$(%{__python36} -c "import numpy; print(numpy.version.version)") \
  -DCMAKE_SKIP_RPATH=ON \
  -DWITH_CAROTENE=OFF \
  -DENABLE_PRECOMPILED_HEADERS:BOOL=OFF \
-%ifnarch x86_64 ia64
- -DENABLE_SSE=OFF \
- -DENABLE_SSE2=OFF \
-%endif
- %{!?with_sse3:-DENABLE_SSE3=OFF} \
  -DCMAKE_BUILD_TYPE=ReleaseWithDebInfo \
  -DBUILD_opencv_java=OFF \
 %ifarch %{ix86} x86_64 ia64 ppc %{power64} aarch64
@@ -251,6 +271,7 @@ pushd build
 %endif
  %{!?with_xine:-DWITH_XINE=OFF} \
  -DBUILD_EXAMPLES=ON \
+ -DBUILD_PROTOBUF=OFF \
  -DINSTALL_C_EXAMPLES=ON \
  -DINSTALL_PYTHON_EXAMPLES=ON \
  -DOPENCL_INCLUDE_DIR=${_includedir}/CL \
@@ -271,17 +292,41 @@ make VERBOSE=1 %{?_smp_mflags}
 
 popd
 
+cp -r opencv-python-%{opencv_python_version} opencv-python-%{opencv_python_version}-py36
+
+pushd opencv-python-%{opencv_python_version}
+cp ../build/lib/cv2.so cv2/
+%py2_build_wheel
+popd
+
+pushd opencv-python-%{opencv_python_version}-py36
+cp ../build/lib/python3/*.so cv2/
+%py36_build_wheel
+popd
 
 %install
 pushd build
 make install DESTDIR=%{buildroot} INSTALL="install -p" CPPROG="cp -p"
 find %{buildroot} -name '*.la' -delete
+rm -rf %{buildroot}%{python2_sitearch}/cv2.so
+rm -rf %{buildroot}%{python36_sitearch}/cv2.cpython-3*.so
+rm -rf %{buildroot}%{python2_sitelib}/cv2.so
+rm -rf %{buildroot}%{python36_sitelib}/cv2.cpython-3*.so
 
 # install -pm644 %{SOURCE1} %{buildroot}%{_datadir}/OpenCV/samples/GNUmakefile
 
 # remove unnecessary documentation
 #rm -rf %{buildroot}%{_datadir}/OpenCV/doc
 
+popd
+
+pushd opencv-python-%{opencv_python_version}
+%py2_install_wheel %{python2_wheelname}
+popd
+
+pushd opencv-python-%{opencv_python_version}-py36
+# Not using py36_install_wheel macro until it gets the --no-deps fix
+pip%{python36_version} install -I dist/%{python36_wheelname} --root %{buildroot} --strip-file-prefix %{buildroot} --no-deps
 popd
 
 %check
@@ -326,6 +371,9 @@ popd
 %{_libdir}/libopencv_videoio.so.%{abiver}*
 %{_libdir}/libopencv_videostab.so.%{abiver}*
 %{_libdir}/libopencv_cvv.so.%{abiver}*
+%{_libdir}/libopencv_img_hash.so.%{abiver}*
+%{_libdir}/libopencv_tracking.so.%{abiver}*
+%{_libdir}/libopencv_xfeatures2d.so.%{abiver}*
 
 %files devel
 %{_includedir}/opencv
@@ -333,15 +381,19 @@ popd
 %{_libdir}/lib*.so
 %{_libdir}/pkgconfig/opencv.pc
 %{_libdir}/OpenCV/*.cmake
+%{_datadir}/OpenCV/valgrind.supp
+%{_datadir}/OpenCV/valgrind_3rdparty.supp
 
 %files devel-docs
 %doc %{_datadir}/OpenCV/samples
 
 %files python
-%{python2_sitearch}/cv2.so
+%{python2_sitearch}/cv2*
+%{python2_sitearch}/opencv_python*
 
-%files python3
-%{python3_sitearch}/cv2.cpython-3*.so
+%files python36u
+%{python36_sitearch}/cv2*
+%{python36_sitearch}/opencv_python*
 
 
 %files contrib
@@ -376,6 +428,14 @@ popd
 %{_libdir}/libopencv_xphoto.so.%{abiver}*
 
 %changelog
+* Mon Aug 07 2017 Frankie Dintino <fdintino@theatlantic.com> - 3.3.0-1
+- Update to 3.3.0
+- Remove overly paranoid cleaning of tarballs
+- Build using wheels
+- Link against openblas instead of atlas
+- Default ffmpeg and openblas enabled
+- Build IUS python 3.6 package
+
 * Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 3.2.0-5
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
 

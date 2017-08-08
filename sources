@@ -1,2 +1,3 @@
-SHA512 (opencv-clean-3.2.0.tar.gz) = 9f7e25f2f570c08d37bc996dbf38768ab43c2312aacfd00a31c82d8a55caeb57d4039db98579032e157f64c3173bfe995d3ca53212f34e764baa54415dd93f93
-SHA512 (opencv_contrib-clean-3.2.0.tar.gz) = dd1abe177f22cdb9f03c063310eb61d205841a74dd9f9e9bdc96e40ce766cc25bdfebd40bb3e226834c8b4a6c8b741f3957257b2fdd95f67a980258f7cdc654b
+d8b1cfa1cb16c4369a6877cdff8f6e65  opencv-python-8.tar.gz
+eeedaec282a70aa2ea1d5152a372c990  opencv-3.3.0.tar.gz
+7878ff39d3488b335861831419d30c64  opencv_contrib-3.3.0.tar.gz
