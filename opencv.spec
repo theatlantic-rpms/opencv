@@ -36,7 +36,7 @@
 
 Name:           opencv
 Version:        3.3.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Collection of algorithms for computer vision
 Group:          Development/Libraries
 # This is normal three clause BSD.
@@ -206,9 +206,9 @@ rm -rf 3rdparty/*
 mv ittnotify.bak 3rdparty/ittnotify
 pwd
 %patch1 -p1 -b .cmake_paths
-pushd %{name}_contrib-%{version}
 # missing dependecies for dnn module in Fedora (protobuf-cpp)
 rm -rf modules/dnn/
+pushd %{name}_contrib-%{version}
 %patch2 -p1 -b .pillow
 popd
 %patch4 -p1 -b .fix_protobuf_cmake
@@ -404,7 +404,8 @@ popd
 %{_libdir}/libopencv_ccalib.so.%{abiver}*
 %{_libdir}/libopencv_datasets.so.%{abiver}*
 # Disabled because of missing dependency package in fedora (protobuf-cpp)
-#{_libdir}/libopencv_dnn.so.%{abiver}*
+#{_libdir}/libopencv_dnn.so.{abiver}*
+%{_libdir}/libopencv_dnn_modern.so.%{abiver}*
 %{_libdir}/libopencv_dpm.so.%{abiver}*
 %{_libdir}/libopencv_face.so.%{abiver}*
 %{_libdir}/libopencv_freetype.so.%{abiver}*
@@ -428,6 +429,9 @@ popd
 %{_libdir}/libopencv_xphoto.so.%{abiver}*
 
 %changelog
+* Tue Jun 05 2018 Frankie Dintino <fdintino@theatlantic.com> - 3.3.0-2
+- Update release for libgphoto version bump
+
 * Mon Aug 07 2017 Frankie Dintino <fdintino@theatlantic.com> - 3.3.0-1
 - Update to 3.3.0
 - Remove overly paranoid cleaning of tarballs
